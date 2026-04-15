@@ -1,8 +1,11 @@
 use std::time::Duration;
 
 use gpui::{
-    App, Application, Bounds, ClickEvent, Context, Global, Window, WindowBounds, WindowOptions, div, prelude::*, px, size, Entity
+    App, Application, Bounds, ClickEvent, Context, Entity, FocusHandle, Global, KeyBinding, Window, WindowBounds, WindowOptions, actions, div, prelude::*, px, size
 };
+
+actions!(close, [CloseWindow]);
+actions!(start, [Toggle]);
 
 pub struct PomoAppState {
     pub running: bool,
@@ -15,13 +18,13 @@ impl Default for PomoAppState {
     fn default() -> Self {
         Self {
             running: false,
-            seconds: 900,
-            seconds_left: 900,
+            seconds: 600,
+            seconds_left: 600,
         }
     }
 }
 
-fn button(text: &str, callback: impl Fn(&mut Window, &mut App) + 'static) -> impl IntoElement {
+fn _button(text: &str, callback: impl Fn(&mut Window, &mut App) + 'static) -> impl IntoElement {
     div()
         .id(text.to_string())
         .flex_none()
@@ -38,11 +41,27 @@ fn button(text: &str, callback: impl Fn(&mut Window, &mut App) + 'static) -> imp
 
 pub struct PomoApp {}
 
-pub struct RootView;
+pub struct RootView {
+    focus_handle: FocusHandle
+}
 
 impl RootView {
     pub fn new(cx: &mut App, window: &mut Window) -> Entity<RootView> {
-        cx.new(|_| Self)
+        cx.new(|cx|
+            {
+                let focus_handle = cx.focus_handle();
+                focus_handle.focus(window);
+                Self {focus_handle}
+            })
+    }
+    pub fn reset_timer(&mut self, _event: &ClickEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        let state = cx.global_mut::<PomoAppState>();
+        if state.seconds_left != 0 {
+            return
+        }
+        state.seconds_left = state.seconds;
+        state.running = false;
+        cx.notify();
     }
 
     pub fn start_timer(&mut self, _event: &ClickEvent, _window: &mut Window, cx: &mut Context<Self>) {
@@ -51,7 +70,8 @@ impl RootView {
         let is_now_running = state.running;
 
         if state.seconds_left == 0 {
-            state.seconds_left = state.seconds;
+            // state.seconds_left = state.seconds;
+            return
         }
 
         if is_now_running {
@@ -87,7 +107,7 @@ impl RootView {
 }
 
 impl Render for RootView {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let app_state = cx.global::<PomoAppState>();
 
         let seconds = app_state.seconds;
@@ -103,6 +123,10 @@ impl Render for RootView {
 
 
         div()
+            .on_action(|_: &CloseWindow, window, _| {
+                window.remove_window();
+            })
+            .track_focus(&self.focus_handle)
             .flex()
             .flex_col()
             .id("root")
@@ -131,7 +155,8 @@ impl Render for RootView {
                 .rounded_sm()
                 .cursor_pointer()
                 .child(label)
-                .on_click(cx.listener(Self::start_timer))
+                .on_click( cx.listener(Self::start_timer))
+                .on_click( cx.listener(Self::reset_timer))
             )
     }
 }
@@ -140,6 +165,13 @@ impl PomoApp {
     pub fn run() {
         Application::new().run(|app: &mut App| {
             app.set_global(PomoAppState::default());
+            app.bind_keys([KeyBinding::new("cmd-w", CloseWindow, None)]);
+            app.on_window_closed(|app| {
+            if app.windows().is_empty() {
+                app.quit();
+                }
+            })
+            .detach();
 
             let bounds = Bounds::centered(None, size(px(500.), px(500.0)), app);
             let window_options = WindowOptions {
