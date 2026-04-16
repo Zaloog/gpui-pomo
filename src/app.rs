@@ -17,9 +17,10 @@ impl PomoApp {
             })
             .detach();
 
-            let bounds = Bounds::centered(None, size(px(500.), px(500.0)), app);
+            let bounds = Bounds::centered(None, size(px(350.), px(350.0)), app);
             let window_options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
+                is_resizable:false,
                 ..Default::default()
             };
 

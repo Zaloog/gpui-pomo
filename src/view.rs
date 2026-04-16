@@ -2,13 +2,33 @@ use std::f32::consts::PI;
 use std::time::Duration;
 
 use gpui::{
-    AnyElement, App, ClickEvent, Context, Entity, FocusHandle, PathBuilder, SharedString, Window,
-    actions, canvas, div, point, prelude::*, px,
+    AnyElement, App, ClickEvent, Context, Entity, FocusHandle, KeyDownEvent, PathBuilder,
+    SharedString, Window, actions, canvas, div, point, prelude::*, px,
 };
 
 use crate::state::PomoAppState;
 
 actions!(close, [CloseWindow]);
+
+// ── Color palette ─────────────────────────────────────────────────────────────
+
+const BG: u32 = 0x1c1612;
+const SURFACE: u32 = 0x262018;
+const SURFACE_ACTIVE: u32 = 0x342c24;
+const BORDER: u32 = 0x3d3328;
+const ACCENT_FOCUS: u32 = 0xf97316;   // orange
+const ACCENT_BREAK: u32 = 0xf59e0b;   // amber
+const TEXT_PRIMARY: u32 = 0xf5ede0;
+const TEXT_SECONDARY: u32 = 0x9c8977;
+const TEXT_MUTED: u32 = 0x5a4f44;
+const SESSION_DONE: u32 = 0xf97316;
+const SESSION_CURRENT: u32 = 0xa64a1a;
+const SESSION_IDLE: u32 = 0x3d3328;
+const RED: u32 = 0xef4444;
+
+fn col(hex: u32) -> gpui::Hsla {
+    gpui::rgb(hex).into()
+}
 
 // ── Navigation state ──────────────────────────────────────────────────────────
 
@@ -62,7 +82,7 @@ impl EditTarget {
     }
 }
 
-// ── Pending settings (not yet applied, waiting for reset) ─────────────────────
+// ── Pending settings ──────────────────────────────────────────────────────────
 
 #[derive(Clone)]
 struct PendingSettings {
@@ -71,7 +91,6 @@ struct PendingSettings {
     total_sessions: u8,
 }
 
-
 // ── View ──────────────────────────────────────────────────────────────────────
 
 pub struct RootView {
@@ -79,6 +98,8 @@ pub struct RootView {
     current_view: AppView,
     edit_value: u32,
     pending: Option<PendingSettings>,
+    is_editing_value: bool,
+    input_text: String,
 }
 
 impl RootView {
@@ -91,6 +112,8 @@ impl RootView {
                 current_view: AppView::Timer,
                 edit_value: 0,
                 pending: None,
+                is_editing_value: false,
+                input_text: String::new(),
             }
         })
     }
@@ -149,6 +172,20 @@ impl RootView {
         .detach();
     }
 
+    fn commit_input(&mut self) {
+        if !self.input_text.is_empty() {
+            if let Ok(v) = self.input_text.parse::<u32>() {
+                let (min, max) = match &self.current_view {
+                    AppView::Edit(t) => (t.min(), t.max()),
+                    _ => (1, 99),
+                };
+                self.edit_value = v.clamp(min, max);
+            }
+        }
+        self.is_editing_value = false;
+        self.input_text = self.edit_value.to_string();
+    }
+
     fn reset_timer(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
         let (focus_minutes, break_minutes, total_sessions) = match &self.pending {
             Some(p) => (p.focus_minutes, p.break_minutes, p.total_sessions),
@@ -171,11 +208,7 @@ impl RootView {
     // ── Timer render helpers ──────────────────────────────────────────────────
 
     fn accent_color(is_break: bool) -> gpui::Hsla {
-        if is_break {
-            gpui::rgb(0x4A90D9).into()
-        } else {
-            gpui::green()
-        }
+        col(if is_break { ACCENT_BREAK } else { ACCENT_FOCUS })
     }
 
     fn phase_label(all_done: bool, is_break: bool) -> &'static str {
@@ -231,7 +264,8 @@ impl RootView {
             .flex_col()
             .id("root")
             .size_full()
-            .bg(gpui::white())
+            .py(px(24.))
+            .bg(col(BG))
             .justify_center()
             .items_center()
             .gap_6()
@@ -303,15 +337,15 @@ impl RootView {
                                             && !is_break
                                             && i == sessions_completed as usize;
                                         div()
-                                            .w(px(16.))
-                                            .h(px(16.))
+                                            .w(px(9.))
+                                            .h(px(24.))
                                             .rounded_full()
                                             .bg(if completed {
-                                                gpui::green()
+                                                col(SESSION_DONE)
                                             } else if is_current {
-                                                gpui::rgb(0xa8d5a2).into()
+                                                col(SESSION_CURRENT)
                                             } else {
-                                                gpui::rgb(0xe0e0e0).into()
+                                                col(SESSION_IDLE)
                                             })
                                     })),
                             ),
@@ -320,10 +354,12 @@ impl RootView {
             // Button row: [ ↺ ]  [ Start/Pause ]  [ ⚙ ]
             .child(
                 div()
+                    .mt(px(8.))
                     .flex()
                     .flex_row()
                     .gap_2()
                     .items_center()
+                    .w(px(300.))
                     // Reset button
                     .child(
                         div()
@@ -334,28 +370,31 @@ impl RootView {
                             .justify_center()
                             .items_center()
                             .rounded_full()
-                            .bg(gpui::rgb(0xf7f7f7))
+                            .bg(col(SURFACE))
                             .border_1()
-                            .border_color(gpui::rgb(0xe0e0e0))
+                            .border_color(col(BORDER))
+                            .text_color(col(TEXT_SECONDARY))
                             .cursor_pointer()
-                            .active(|s| s.opacity(0.75))
+                            .active(|s| s.bg(col(SURFACE_ACTIVE)))
                             .child("↺")
                             .on_click(cx.listener(Self::reset_timer)),
                     )
-                    // Toggle button
+                    // Toggle button (primary — orange fill)
                     .child(
                         div()
                             .id("btn_toggle")
-                            .flex_none()
-                            .px_4()
+                            .flex_1()
+                            .flex()
+                            .justify_center()
                             .py_1()
                             .text_base()
-                            .font_weight(gpui::FontWeight(500.))
-                            .bg(gpui::rgb(0xf7f7f7))
+                            .font_weight(gpui::FontWeight(600.))
+                            .bg(col(ACCENT_FOCUS))
+                            .text_color(col(BG))
                             .active(|s| s.opacity(0.85))
                             .border_1()
-                            .border_color(gpui::rgb(0xe0e0e0))
-                            .rounded_sm()
+                            .border_color(col(ACCENT_FOCUS))
+                            .rounded_full()
                             .cursor_pointer()
                             .child(button_label)
                             .on_click(cx.listener(Self::toggle_timer)),
@@ -365,17 +404,18 @@ impl RootView {
                         div()
                             .id("btn_settings")
                             .relative()
-                            .w(px(30.))
                             .h(px(30.))
+                            .w(px(30.))
                             .flex()
                             .justify_center()
                             .items_center()
                             .rounded_full()
-                            .bg(gpui::rgb(0xf7f7f7))
+                            .bg(col(SURFACE))
                             .border_1()
-                            .border_color(gpui::rgb(0xe0e0e0))
+                            .border_color(col(BORDER))
+                            .text_color(col(TEXT_SECONDARY))
                             .cursor_pointer()
-                            .active(|s| s.opacity(0.75))
+                            .active(|s| s.bg(col(SURFACE_ACTIVE)))
                             .child("⚙")
                             .when(has_pending, |s| {
                                 s.child(
@@ -386,7 +426,7 @@ impl RootView {
                                         .w(px(9.))
                                         .h(px(9.))
                                         .rounded_full()
-                                        .bg(gpui::rgb(0xe53e3e)),
+                                        .bg(col(RED)),
                                 )
                             })
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -399,7 +439,6 @@ impl RootView {
     }
 
     fn render_settings(&mut self, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        // Show pending values if any, otherwise current applied values
         let (focus_min, break_min, total_sess) = match &self.pending {
             Some(p) => (p.focus_minutes, p.break_minutes, p.total_sessions as u32),
             None => {
@@ -420,9 +459,11 @@ impl RootView {
             .track_focus(&self.focus_handle)
             .id("settings")
             .size_full()
+            .py(px(24.))
             .flex()
             .flex_col()
-            .bg(gpui::white())
+            .bg(col(BG))
+            .text_color(col(TEXT_PRIMARY))
             // Header
             .child(
                 div()
@@ -438,7 +479,7 @@ impl RootView {
                             .id("settings_back")
                             .cursor_pointer()
                             .text_xl()
-                            .text_color(gpui::rgb(0x555555))
+                            .text_color(col(TEXT_SECONDARY))
                             .active(|s| s.opacity(0.6))
                             .child("←")
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -452,7 +493,6 @@ impl RootView {
                             .font_weight(gpui::FontWeight(700.))
                             .child("Settings"),
                     )
-                    // Pending indicator in header
                     .when(has_pending, |s| {
                         s.child(
                             div()
@@ -465,12 +505,12 @@ impl RootView {
                                         .w(px(7.))
                                         .h(px(7.))
                                         .rounded_full()
-                                        .bg(gpui::rgb(0xe53e3e)),
+                                        .bg(col(RED)),
                                 )
                                 .child(
                                     div()
                                         .text_sm()
-                                        .text_color(gpui::rgb(0xe53e3e))
+                                        .text_color(col(RED))
                                         .child("pending reset"),
                                 ),
                         )
@@ -489,9 +529,9 @@ impl RootView {
                     .px(px(24.))
                     .py(px(16.))
                     .border_b_1()
-                    .border_color(gpui::rgb(0xf0f0f0))
+                    .border_color(col(BORDER))
                     .cursor_pointer()
-                    .active(|s| s.bg(gpui::rgb(0xf5f5f5)))
+                    .active(|s| s.bg(col(SURFACE)))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.edit_value = value;
                         this.current_view = AppView::Edit(target.clone());
@@ -507,13 +547,13 @@ impl RootView {
                             .child(
                                 div()
                                     .text_base()
-                                    .text_color(gpui::rgb(0x888888))
+                                    .text_color(col(TEXT_SECONDARY))
                                     .child(value_str),
                             )
                             .child(
                                 div()
                                     .text_base()
-                                    .text_color(gpui::rgb(0xcccccc))
+                                    .text_color(col(TEXT_MUTED))
                                     .child("›"),
                             ),
                     )
@@ -535,16 +575,48 @@ impl RootView {
         let min = target.min();
         let max = target.max();
         let target_for_back = target.clone();
+        let is_editing = self.is_editing_value;
+        let input_text = self.input_text.clone();
 
         div()
             .on_action(|_: &CloseWindow, window, _| window.remove_window())
             .track_focus(&self.focus_handle)
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                if !this.is_editing_value {
+                    return;
+                }
+                match event.keystroke.key.as_str() {
+                    k @ ("0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9") => {
+                        if this.input_text.len() < 2 {
+                            this.input_text.push_str(k);
+                            cx.notify();
+                        }
+                    }
+                    "backspace" => {
+                        if this.input_text.pop().is_some() {
+                            cx.notify();
+                        }
+                    }
+                    "enter" => {
+                        this.commit_input();
+                        cx.notify();
+                    }
+                    "escape" => {
+                        this.is_editing_value = false;
+                        this.input_text = this.edit_value.to_string();
+                        cx.notify();
+                    }
+                    _ => {}
+                }
+            }))
             .id("edit")
             .size_full()
+            .py(px(24.))
             .flex()
             .flex_col()
-            .bg(gpui::white())
-            // Header: back arrow + setting name
+            .bg(col(BG))
+            .text_color(col(TEXT_PRIMARY))
+            // Header
             .child(
                 div()
                     .flex()
@@ -559,17 +631,16 @@ impl RootView {
                             .id("edit_back")
                             .cursor_pointer()
                             .text_xl()
-                            .text_color(gpui::rgb(0x555555))
+                            .text_color(col(TEXT_SECONDARY))
                             .active(|s| s.opacity(0.6))
                             .child("←")
                             .on_click(cx.listener(move |this, _, _, cx| {
+                                this.commit_input();
                                 let new_value = this.edit_value;
-                                // Read current state values for comparison
                                 let (sf, sb, ss) = {
                                     let s = cx.global::<PomoAppState>();
                                     (s.focus_minutes, s.break_minutes, s.total_sessions)
                                 };
-                                // Update or initialize pending
                                 {
                                     let p = this.pending.get_or_insert_with(|| PendingSettings {
                                         focus_minutes: sf,
@@ -584,7 +655,6 @@ impl RootView {
                                         }
                                     }
                                 }
-                                // Clear pending if it now matches the applied state
                                 if let Some(ref p) = this.pending {
                                     if p.focus_minutes == sf
                                         && p.break_minutes == sb
@@ -630,37 +700,48 @@ impl RootView {
                                     .items_center()
                                     .rounded_full()
                                     .border_1()
-                                    .border_color(if at_min {
-                                        gpui::rgb(0xe5e5e5)
-                                    } else {
-                                        gpui::rgb(0xbbbbbb)
-                                    })
+                                    .border_color(col(if at_min { SURFACE } else { BORDER }))
                                     .text_size(px(24.))
                                     .font_weight(gpui::FontWeight(700.))
-                                    .text_color(if at_min {
-                                        gpui::rgb(0xcccccc)
-                                    } else {
-                                        gpui::rgb(0x333333)
-                                    })
+                                    .text_color(col(if at_min { TEXT_MUTED } else { TEXT_PRIMARY }))
                                     .cursor_pointer()
-                                    .when(!at_min, |s| s.active(|s| s.bg(gpui::rgb(0xf0f0f0))))
+                                    .when(!at_min, |s| s.active(|s| s.bg(col(SURFACE_ACTIVE))))
                                     .child("−")
                                     .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.commit_input();
                                         if this.edit_value > min {
                                             this.edit_value -= 1;
-                                            cx.notify();
                                         }
+                                        cx.notify();
                                     })),
                             )
-                            // Current value
+                            // Value — click to type
                             .child(
                                 div()
-                                    .w(px(80.))
+                                    .id("value_display")
+                                    .w(px(90.))
                                     .flex()
                                     .justify_center()
+                                    .items_center()
+                                    .py(px(2.))
                                     .text_size(px(52.))
                                     .font_weight(gpui::FontWeight(700.))
-                                    .child(format!("{}", value)),
+                                    .text_color(col(ACCENT_FOCUS))
+                                    .when(is_editing, |s| {
+                                        s.border_b_2().border_color(col(ACCENT_FOCUS))
+                                    })
+                                    .when(!is_editing, |s| {
+                                        s.cursor_pointer().on_click(cx.listener(|this, _, _, cx| {
+                                            this.input_text = this.edit_value.to_string();
+                                            this.is_editing_value = true;
+                                            cx.notify();
+                                        }))
+                                    })
+                                    .child(if is_editing {
+                                        format!("{}|", input_text)
+                                    } else {
+                                        format!("{}", value)
+                                    }),
                             )
                             // Plus button
                             .child(
@@ -673,32 +754,25 @@ impl RootView {
                                     .items_center()
                                     .rounded_full()
                                     .border_1()
-                                    .border_color(if at_max {
-                                        gpui::rgb(0xe5e5e5)
-                                    } else {
-                                        gpui::rgb(0xbbbbbb)
-                                    })
+                                    .border_color(col(if at_max { SURFACE } else { BORDER }))
                                     .text_size(px(24.))
                                     .font_weight(gpui::FontWeight(700.))
-                                    .text_color(if at_max {
-                                        gpui::rgb(0xcccccc)
-                                    } else {
-                                        gpui::rgb(0x333333)
-                                    })
+                                    .text_color(col(if at_max { TEXT_MUTED } else { TEXT_PRIMARY }))
                                     .cursor_pointer()
-                                    .when(!at_max, |s| s.active(|s| s.bg(gpui::rgb(0xf0f0f0))))
+                                    .when(!at_max, |s| s.active(|s| s.bg(col(SURFACE_ACTIVE))))
                                     .child("+")
                                     .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.commit_input();
                                         if this.edit_value < max {
                                             this.edit_value += 1;
-                                            cx.notify();
                                         }
+                                        cx.notify();
                                     })),
                             ),
                     )
                     .child(
                         div()
-                            .text_color(gpui::rgb(0x999999))
+                            .text_color(col(TEXT_SECONDARY))
                             .child(unit),
                     ),
             )
@@ -754,18 +828,9 @@ fn paint_donut_arc(
 }
 
 fn paint_ring_track(cx_f: f32, cy_f: f32, outer_r: f32, inner_r: f32, window: &mut Window) {
-    let gray: gpui::Hsla = gpui::rgb(0xe5e5e5).into();
-    paint_donut_arc(cx_f, cy_f, outer_r, inner_r, -PI / 2., PI / 2., gray, window);
-    paint_donut_arc(
-        cx_f,
-        cy_f,
-        outer_r,
-        inner_r,
-        PI / 2.,
-        3. * PI / 2.,
-        gray,
-        window,
-    );
+    let track = col(BORDER);
+    paint_donut_arc(cx_f, cy_f, outer_r, inner_r, -PI / 2., PI / 2., track, window);
+    paint_donut_arc(cx_f, cy_f, outer_r, inner_r, PI / 2., 3. * PI / 2., track, window);
 }
 
 fn paint_ring_progress(
@@ -782,16 +847,7 @@ fn paint_ring_progress(
     }
     if progress > 0.999 {
         paint_donut_arc(cx_f, cy_f, outer_r, inner_r, -PI / 2., PI / 2., color, window);
-        paint_donut_arc(
-            cx_f,
-            cy_f,
-            outer_r,
-            inner_r,
-            PI / 2.,
-            3. * PI / 2.,
-            color,
-            window,
-        );
+        paint_donut_arc(cx_f, cy_f, outer_r, inner_r, PI / 2., 3. * PI / 2., color, window);
         return;
     }
     let end = -PI / 2. + progress * 2. * PI;
