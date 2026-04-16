@@ -1,4 +1,6 @@
 mod app;
+mod state;
+mod view;
 
 use app::PomoApp;
 
