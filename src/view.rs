@@ -100,6 +100,7 @@ pub struct RootView {
     pending: Option<PendingSettings>,
     is_editing_value: bool,
     input_text: String,
+    selected_settings_row: usize,
 }
 
 impl RootView {
@@ -114,13 +115,14 @@ impl RootView {
                 pending: None,
                 is_editing_value: false,
                 input_text: String::new(),
+                selected_settings_row: 0,
             }
         })
     }
 
     // ── Timer actions ─────────────────────────────────────────────────────────
 
-    fn toggle_timer(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+    fn do_toggle(&mut self, cx: &mut Context<Self>) {
         let state = cx.global_mut::<PomoAppState>();
 
         if state.is_all_done() {
@@ -142,6 +144,10 @@ impl RootView {
         }
     }
 
+    fn toggle_timer(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+        self.do_toggle(cx);
+    }
+
     fn start_timer(&self, cx: &mut Context<Self>) {
         cx.spawn(async |this, cx| {
             loop {
@@ -157,9 +163,7 @@ impl RootView {
                         }
                         state.running
                     };
-                    if running {
-                        cx.notify();
-                    }
+                    cx.notify();
                     running
                 });
 
@@ -173,7 +177,7 @@ impl RootView {
     }
 
     fn commit_input(&mut self) {
-        if !self.input_text.is_empty() {
+        if self.is_editing_value && !self.input_text.is_empty() {
             if let Ok(v) = self.input_text.parse::<u32>() {
                 let (min, max) = match &self.current_view {
                     AppView::Edit(t) => (t.min(), t.max()),
@@ -186,7 +190,7 @@ impl RootView {
         self.input_text = self.edit_value.to_string();
     }
 
-    fn reset_timer(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+    fn do_reset(&mut self, cx: &mut Context<Self>) {
         let (focus_minutes, break_minutes, total_sessions) = match &self.pending {
             Some(p) => (p.focus_minutes, p.break_minutes, p.total_sessions),
             None => {
@@ -202,6 +206,63 @@ impl RootView {
             seconds_left: focus_minutes as u64 * 60,
             ..Default::default()
         };
+        cx.notify();
+    }
+
+    fn reset_timer(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+        self.do_reset(cx);
+    }
+
+    fn commit_edit_and_go_back(&mut self, cx: &mut Context<Self>) {
+        self.commit_input();
+        let new_value = self.edit_value;
+        let target = match self.current_view.clone() {
+            AppView::Edit(t) => t,
+            _ => return,
+        };
+
+        let pristine = {
+            let s = cx.global::<PomoAppState>();
+            !s.running && s.sessions_completed == 0 && !s.is_break
+                && s.seconds_left == s.focus_seconds()
+        };
+
+        if pristine {
+            let state = cx.global_mut::<PomoAppState>();
+            match &target {
+                EditTarget::FocusMinutes => {
+                    state.focus_minutes = new_value;
+                    state.seconds_left = state.focus_seconds();
+                }
+                EditTarget::BreakMinutes => state.break_minutes = new_value,
+                EditTarget::TotalSessions => state.total_sessions = new_value as u8,
+            }
+            self.pending = None;
+        } else {
+            let (sf, sb, ss) = {
+                let s = cx.global::<PomoAppState>();
+                (s.focus_minutes, s.break_minutes, s.total_sessions)
+            };
+            {
+                let p = self.pending.get_or_insert_with(|| PendingSettings {
+                    focus_minutes: sf,
+                    break_minutes: sb,
+                    total_sessions: ss,
+                });
+                match &target {
+                    EditTarget::FocusMinutes => p.focus_minutes = new_value,
+                    EditTarget::BreakMinutes => p.break_minutes = new_value,
+                    EditTarget::TotalSessions => p.total_sessions = new_value as u8,
+                }
+            }
+            if let Some(ref p) = self.pending {
+                if p.focus_minutes == sf && p.break_minutes == sb && p.total_sessions == ss {
+                    self.pending = None;
+                }
+            }
+        }
+
+        self.current_view = AppView::Settings;
         cx.notify();
     }
 
@@ -260,6 +321,21 @@ impl RootView {
         div()
             .on_action(|_: &CloseWindow, window, _| window.remove_window())
             .track_focus(&self.focus_handle)
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                match event.keystroke.key.as_str() {
+                    "space" => {
+                        this.do_toggle(cx);
+                    }
+                    "r" => {
+                        this.do_reset(cx);
+                    }
+                    "s" => {
+                        this.current_view = AppView::Settings;
+                        cx.notify();
+                    }
+                    _ => {}
+                }
+            }))
             .flex()
             .flex_col()
             .id("root")
@@ -364,8 +440,8 @@ impl RootView {
                     .child(
                         div()
                             .id("btn_reset")
-                            .w(px(30.))
-                            .h(px(30.))
+                            .w(px(40.))
+                            .h(px(40.))
                             .flex()
                             .justify_center()
                             .items_center()
@@ -384,9 +460,10 @@ impl RootView {
                         div()
                             .id("btn_toggle")
                             .flex_1()
+                            .h(px(40.))
                             .flex()
                             .justify_center()
-                            .py_1()
+                            .items_center()
                             .text_base()
                             .font_weight(gpui::FontWeight(600.))
                             .bg(col(ACCENT_FOCUS))
@@ -404,8 +481,8 @@ impl RootView {
                         div()
                             .id("btn_settings")
                             .relative()
-                            .h(px(30.))
-                            .w(px(30.))
+                            .h(px(40.))
+                            .w(px(40.))
                             .flex()
                             .justify_center()
                             .items_center()
@@ -447,6 +524,7 @@ impl RootView {
             }
         };
         let has_pending = self.pending.is_some();
+        let selected_row = self.selected_settings_row;
 
         let rows: [(EditTarget, &'static str, u32); 3] = [
             (EditTarget::FocusMinutes, "Focus Time", focus_min),
@@ -457,6 +535,42 @@ impl RootView {
         div()
             .on_action(|_: &CloseWindow, window, _| window.remove_window())
             .track_focus(&self.focus_handle)
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                match event.keystroke.key.as_str() {
+                    "j" => {
+                        this.selected_settings_row = (this.selected_settings_row + 1).min(2);
+                        cx.notify();
+                    }
+                    "k" => {
+                        this.selected_settings_row =
+                            this.selected_settings_row.saturating_sub(1);
+                        cx.notify();
+                    }
+                    "space" | "enter" => {
+                        let row = this.selected_settings_row;
+                        let (focus_min, break_min, total_sess) = match &this.pending {
+                            Some(p) => (p.focus_minutes, p.break_minutes, p.total_sessions as u32),
+                            None => {
+                                let s = cx.global::<PomoAppState>();
+                                (s.focus_minutes, s.break_minutes, s.total_sessions as u32)
+                            }
+                        };
+                        let (target, value) = match row {
+                            0 => (EditTarget::FocusMinutes, focus_min),
+                            1 => (EditTarget::BreakMinutes, break_min),
+                            _ => (EditTarget::TotalSessions, total_sess),
+                        };
+                        this.edit_value = value;
+                        this.current_view = AppView::Edit(target);
+                        cx.notify();
+                    }
+                    "escape" | "s" => {
+                        this.current_view = AppView::Timer;
+                        cx.notify();
+                    }
+                    _ => {}
+                }
+            }))
             .id("settings")
             .size_full()
             .py(px(24.))
@@ -517,9 +631,10 @@ impl RootView {
                     }),
             )
             // Setting rows
-            .children(rows.into_iter().map(|(target, label, value)| {
+            .children(rows.into_iter().enumerate().map(|(i, (target, label, value))| {
                 let value_str = target.value_display(value);
                 let id = SharedString::from(label);
+                let is_selected = i == selected_row;
                 div()
                     .id(id)
                     .flex()
@@ -531,6 +646,7 @@ impl RootView {
                     .border_b_1()
                     .border_color(col(BORDER))
                     .cursor_pointer()
+                    .when(is_selected, |s| s.bg(col(SURFACE_ACTIVE)))
                     .active(|s| s.bg(col(SURFACE)))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.edit_value = value;
@@ -574,39 +690,60 @@ impl RootView {
         let label = target.label();
         let min = target.min();
         let max = target.max();
-        let target_for_back = target.clone();
         let is_editing = self.is_editing_value;
         let input_text = self.input_text.clone();
 
         div()
             .on_action(|_: &CloseWindow, window, _| window.remove_window())
             .track_focus(&self.focus_handle)
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                if !this.is_editing_value {
-                    return;
-                }
-                match event.keystroke.key.as_str() {
-                    k @ ("0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9") => {
-                        if this.input_text.len() < 2 {
-                            this.input_text.push_str(k);
+            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
+                if this.is_editing_value {
+                    match event.keystroke.key.as_str() {
+                        k @ ("0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9") => {
+                            if this.input_text.len() < 2 {
+                                this.input_text.push_str(k);
+                                cx.notify();
+                            }
+                        }
+                        "backspace" => {
+                            if this.input_text.pop().is_some() {
+                                cx.notify();
+                            }
+                        }
+                        "enter" => {
+                            this.commit_input();
                             cx.notify();
                         }
-                    }
-                    "backspace" => {
-                        if this.input_text.pop().is_some() {
+                        "escape" => {
+                            this.is_editing_value = false;
+                            this.input_text = this.edit_value.to_string();
                             cx.notify();
                         }
+                        _ => {}
                     }
-                    "enter" => {
-                        this.commit_input();
-                        cx.notify();
+                } else {
+                    match event.keystroke.key.as_str() {
+                        "j" => {
+                            if this.edit_value > min {
+                                this.edit_value -= 1;
+                                cx.notify();
+                            }
+                        }
+                        "k" => {
+                            if this.edit_value < max {
+                                this.edit_value += 1;
+                                cx.notify();
+                            }
+                        }
+                        "space" | "enter" => {
+                            this.commit_edit_and_go_back(cx);
+                        }
+                        "escape" => {
+                            this.current_view = AppView::Settings;
+                            cx.notify();
+                        }
+                        _ => {}
                     }
-                    "escape" => {
-                        this.is_editing_value = false;
-                        this.input_text = this.edit_value.to_string();
-                        cx.notify();
-                    }
-                    _ => {}
                 }
             }))
             .id("edit")
@@ -634,37 +771,8 @@ impl RootView {
                             .text_color(col(TEXT_SECONDARY))
                             .active(|s| s.opacity(0.6))
                             .child("←")
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.commit_input();
-                                let new_value = this.edit_value;
-                                let (sf, sb, ss) = {
-                                    let s = cx.global::<PomoAppState>();
-                                    (s.focus_minutes, s.break_minutes, s.total_sessions)
-                                };
-                                {
-                                    let p = this.pending.get_or_insert_with(|| PendingSettings {
-                                        focus_minutes: sf,
-                                        break_minutes: sb,
-                                        total_sessions: ss,
-                                    });
-                                    match &target_for_back {
-                                        EditTarget::FocusMinutes => p.focus_minutes = new_value,
-                                        EditTarget::BreakMinutes => p.break_minutes = new_value,
-                                        EditTarget::TotalSessions => {
-                                            p.total_sessions = new_value as u8
-                                        }
-                                    }
-                                }
-                                if let Some(ref p) = this.pending {
-                                    if p.focus_minutes == sf
-                                        && p.break_minutes == sb
-                                        && p.total_sessions == ss
-                                    {
-                                        this.pending = None;
-                                    }
-                                }
-                                this.current_view = AppView::Settings;
-                                cx.notify();
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.commit_edit_and_go_back(cx);
                             })),
                     )
                     .child(
