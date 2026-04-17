@@ -17,9 +17,9 @@ impl PomoApp {
                 focus_minutes: config.focus_minutes,
                 break_minutes: config.break_minutes,
                 total_sessions: config.total_sessions,
-                millis_left: config.focus_minutes as u64 * 60_000,
                 ..Default::default()
             });
+            app.bind_keys([KeyBinding::new("q", CloseWindow, None)]);
             app.bind_keys([KeyBinding::new("cmd-w", CloseWindow, None)]);
             app.on_window_closed(|app| {
                 if app.windows().is_empty() {

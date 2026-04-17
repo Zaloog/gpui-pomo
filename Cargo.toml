@@ -3,6 +3,12 @@ name = "gpui-pomo"
 version = "0.1.0"
 edition = "2024"
 
+[package.metadata.bundle]
+name = "Pomo"
+identifier = "dev.gpui-pomo"
+category = "Productivity"
+short_description = "A Pomodoro timer"
+
 [dependencies]
 gpui = {package= "gpui-ce", version="*"}
 xdg = "2"
