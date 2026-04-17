@@ -1,11 +1,12 @@
 use std::f32::consts::PI;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gpui::{
     AnyElement, App, ClickEvent, Context, Entity, FocusHandle, KeyDownEvent, PathBuilder,
     SharedString, Window, actions, canvas, div, point, prelude::*, px,
 };
 
+use crate::config::Config;
 use crate::state::PomoAppState;
 
 actions!(close, [CloseWindow]);
@@ -16,8 +17,8 @@ const BG: u32 = 0x1c1612;
 const SURFACE: u32 = 0x262018;
 const SURFACE_ACTIVE: u32 = 0x342c24;
 const BORDER: u32 = 0x3d3328;
-const ACCENT_FOCUS: u32 = 0xf97316;   // orange
-const ACCENT_BREAK: u32 = 0xf59e0b;   // amber
+const ACCENT_FOCUS: u32 = 0xf97316;
+const ACCENT_BREAK: u32 = 0xf59e0b;
 const TEXT_PRIMARY: u32 = 0xf5ede0;
 const TEXT_SECONDARY: u32 = 0x9c8977;
 const TEXT_MUTED: u32 = 0x5a4f44;
@@ -130,7 +131,7 @@ impl RootView {
                 focus_minutes: state.focus_minutes,
                 break_minutes: state.break_minutes,
                 total_sessions: state.total_sessions,
-                seconds_left: state.focus_seconds(),
+                millis_left: state.focus_millis(),
                 ..Default::default()
             };
             cx.notify();
@@ -150,16 +151,21 @@ impl RootView {
 
     fn start_timer(&self, cx: &mut Context<Self>) {
         cx.spawn(async |this, cx| {
+            let mut last = Instant::now();
             loop {
                 cx.background_executor()
-                    .timer(Duration::from_millis(1))
+                    .timer(Duration::from_millis(16))
                     .await;
+
+                let now = Instant::now();
+                let delta_ms = now.duration_since(last).as_millis() as u64;
+                last = now;
 
                 let should_continue = this.update(cx, |_, cx| {
                     let running = {
                         let state = cx.global_mut::<PomoAppState>();
                         if state.running {
-                            state.tick();
+                            state.tick(delta_ms);
                         }
                         state.running
                     };
@@ -203,9 +209,10 @@ impl RootView {
             focus_minutes,
             break_minutes,
             total_sessions,
-            seconds_left: focus_minutes as u64 * 60,
+            millis_left: focus_minutes as u64 * 60_000,
             ..Default::default()
         };
+        Config { focus_minutes, break_minutes, total_sessions }.save();
         cx.notify();
     }
 
@@ -224,20 +231,24 @@ impl RootView {
         let pristine = {
             let s = cx.global::<PomoAppState>();
             !s.running && s.sessions_completed == 0 && !s.is_break
-                && s.seconds_left == s.focus_seconds()
+                && s.millis_left == s.focus_millis()
         };
 
         if pristine {
-            let state = cx.global_mut::<PomoAppState>();
-            match &target {
-                EditTarget::FocusMinutes => {
-                    state.focus_minutes = new_value;
-                    state.seconds_left = state.focus_seconds();
+            let (focus_minutes, break_minutes, total_sessions) = {
+                let state = cx.global_mut::<PomoAppState>();
+                match &target {
+                    EditTarget::FocusMinutes => {
+                        state.focus_minutes = new_value;
+                        state.millis_left = state.focus_millis();
+                    }
+                    EditTarget::BreakMinutes => state.break_minutes = new_value,
+                    EditTarget::TotalSessions => state.total_sessions = new_value as u8,
                 }
-                EditTarget::BreakMinutes => state.break_minutes = new_value,
-                EditTarget::TotalSessions => state.total_sessions = new_value as u8,
-            }
+                (state.focus_minutes, state.break_minutes, state.total_sessions)
+            };
             self.pending = None;
+            Config { focus_minutes, break_minutes, total_sessions }.save();
         } else {
             let (sf, sb, ss) = {
                 let s = cx.global::<PomoAppState>();
@@ -282,17 +293,12 @@ impl RootView {
         }
     }
 
-    fn button_label(
-        all_done: bool,
-        running: bool,
-        seconds_left: u64,
-        phase_seconds: u64,
-    ) -> &'static str {
+    fn button_label(all_done: bool, running: bool, millis_left: u64, phase_millis: u64) -> &'static str {
         if all_done {
             "Restart"
         } else if running {
             "Pause"
-        } else if seconds_left == phase_seconds {
+        } else if millis_left >= phase_millis {
             "Start"
         } else {
             "Continue"
@@ -301,34 +307,40 @@ impl RootView {
 
     // ── Screen renderers ──────────────────────────────────────────────────────
 
-    fn render_timer(&mut self, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn render_timer(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let state = cx.global::<PomoAppState>();
 
-        let seconds_left = state.seconds_left;
+        let millis_left = state.millis_left;
         let is_break = state.is_break;
         let sessions_completed = state.sessions_completed;
         let total_sessions = state.total_sessions;
         let running = state.running;
         let all_done = state.is_all_done();
-        let phase_seconds = state.phase_seconds();
+        let phase_millis = state.phase_millis();
+        let progress = state.progress();
+        let secs = state.seconds_display();
 
         let accent = Self::accent_color(is_break);
         let phase_label = Self::phase_label(all_done, is_break);
-        let button_label = Self::button_label(all_done, running, seconds_left, phase_seconds);
-        let progress = 1.0 - seconds_left as f32 / phase_seconds as f32;
+        let button_label = Self::button_label(all_done, running, millis_left, phase_millis);
         let has_pending = self.pending.is_some();
+
+        // Dynamic window title
+        let title = if all_done {
+            "Pomo · All Done!".to_string()
+        } else {
+            let phase = if is_break { "Break" } else { "Focus" };
+            format!("Pomo · {:02}:{:02} {}", secs / 60, secs % 60, phase)
+        };
+        window.set_window_title(&title);
 
         div()
             .on_action(|_: &CloseWindow, window, _| window.remove_window())
             .track_focus(&self.focus_handle)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
                 match event.keystroke.key.as_str() {
-                    "space" => {
-                        this.do_toggle(cx);
-                    }
-                    "r" => {
-                        this.do_reset(cx);
-                    }
+                    "space" => this.do_toggle(cx),
+                    "r" => this.do_reset(cx),
                     "s" => {
                         this.current_view = AppView::Settings;
                         cx.notify();
@@ -340,182 +352,189 @@ impl RootView {
             .flex_col()
             .id("root")
             .size_full()
-            .py(px(24.))
             .bg(col(BG))
-            .justify_center()
             .items_center()
-            .gap_6()
-            // Ring container
+            // Center ring + buttons, pin hints at bottom
             .child(
                 div()
-                    .relative()
-                    .w(px(300.))
-                    .h(px(300.))
-                    .child(
-                        canvas(
-                            |_, _, _| {},
-                            move |bounds, _, window, _| {
-                                let w = f32::from(bounds.size.width);
-                                let h = f32::from(bounds.size.height);
-                                let cx_f = f32::from(bounds.origin.x) + w / 2.0;
-                                let cy_f = f32::from(bounds.origin.y) + h / 2.0;
-                                let outer_r = w / 2.0 - 4.0;
-                                let inner_r = outer_r - 20.0;
-                                paint_ring_track(cx_f, cy_f, outer_r, inner_r, window);
-                                paint_ring_progress(
-                                    cx_f, cy_f, outer_r, inner_r, progress, accent, window,
-                                );
-                            },
-                        )
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .size_full(),
-                    )
+                    .flex_1()
+                    .flex()
+                    .flex_col()
+                    .justify_center()
+                    .items_center()
+                    .gap_6()
+                    // Ring container
                     .child(
                         div()
-                            .absolute()
-                            .top_0()
-                            .left_0()
-                            .size_full()
-                            .flex()
-                            .flex_col()
-                            .justify_center()
-                            .items_center()
-                            .gap_4()
+                            .relative()
+                            .w(px(280.))
+                            .h(px(280.))
                             .child(
-                                div()
-                                    .text_xl()
-                                    .font_weight(gpui::FontWeight(600.))
-                                    .text_color(accent)
-                                    .child(phase_label),
+                                canvas(
+                                    |_, _, _| {},
+                                    move |bounds, _, window, _| {
+                                        let w = f32::from(bounds.size.width);
+                                        let h = f32::from(bounds.size.height);
+                                        let cx_f = f32::from(bounds.origin.x) + w / 2.0;
+                                        let cy_f = f32::from(bounds.origin.y) + h / 2.0;
+                                        let outer_r = w / 2.0 - 4.0;
+                                        let inner_r = outer_r - 18.0;
+                                        paint_ring_track(cx_f, cy_f, outer_r, inner_r, window);
+                                        paint_ring_progress(
+                                            cx_f, cy_f, outer_r, inner_r, progress, accent, window,
+                                        );
+                                    },
+                                )
+                                .absolute()
+                                .top_0()
+                                .left_0()
+                                .size_full(),
                             )
                             .child(
                                 div()
-                                    .font_weight(gpui::FontWeight(900.))
-                                    .text_color(accent)
-                                    .text_size(px(64.))
-                                    .child(format!(
-                                        "{:02}:{:02}",
-                                        seconds_left / 60,
-                                        seconds_left % 60
-                                    )),
-                            )
-                            .child(
-                                div()
+                                    .absolute()
+                                    .top_0()
+                                    .left_0()
+                                    .size_full()
                                     .flex()
-                                    .flex_row()
-                                    .gap_2()
+                                    .flex_col()
+                                    .justify_center()
                                     .items_center()
-                                    .children((0..total_sessions as usize).map(|i| {
-                                        let completed = i < sessions_completed as usize;
-                                        let is_current = !all_done
-                                            && !is_break
-                                            && i == sessions_completed as usize;
+                                    .gap_4()
+                                    .child(
                                         div()
-                                            .w(px(9.))
-                                            .h(px(24.))
-                                            .rounded_full()
-                                            .bg(if completed {
-                                                col(SESSION_DONE)
-                                            } else if is_current {
-                                                col(SESSION_CURRENT)
-                                            } else {
-                                                col(SESSION_IDLE)
-                                            })
+                                            .text_xl()
+                                            .font_weight(gpui::FontWeight(600.))
+                                            .text_color(accent)
+                                            .child(phase_label),
+                                    )
+                                    .child(
+                                        div()
+                                            .font_weight(gpui::FontWeight(900.))
+                                            .text_color(accent)
+                                            .text_size(px(60.))
+                                            .child(format!(
+                                                "{:02}:{:02}",
+                                                secs / 60,
+                                                secs % 60
+                                            )),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .flex_row()
+                                            .gap_2()
+                                            .items_center()
+                                            .children((0..total_sessions as usize).map(|i| {
+                                                let completed = i < sessions_completed as usize;
+                                                let is_current = !all_done
+                                                    && !is_break
+                                                    && i == sessions_completed as usize;
+                                                div()
+                                                    .w(px(9.))
+                                                    .h(px(24.))
+                                                    .rounded_full()
+                                                    .bg(if completed {
+                                                        col(SESSION_DONE)
+                                                    } else if is_current {
+                                                        col(SESSION_CURRENT)
+                                                    } else {
+                                                        col(SESSION_IDLE)
+                                                    })
+                                            })),
+                                    ),
+                            ),
+                    )
+                    // Button row
+                    .child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .gap_2()
+                            .items_center()
+                            .w(px(280.))
+                            .child(
+                                div()
+                                    .id("btn_reset")
+                                    .w(px(40.))
+                                    .h(px(40.))
+                                    .flex()
+                                    .justify_center()
+                                    .items_center()
+                                    .rounded_full()
+                                    .bg(col(SURFACE))
+                                    .border_1()
+                                    .border_color(col(BORDER))
+                                    .text_color(col(TEXT_SECONDARY))
+                                    .cursor_pointer()
+                                    .active(|s| s.bg(col(SURFACE_ACTIVE)))
+                                    .child("↺")
+                                    .on_click(cx.listener(Self::reset_timer)),
+                            )
+                            .child(
+                                div()
+                                    .id("btn_toggle")
+                                    .flex_1()
+                                    .h(px(40.))
+                                    .flex()
+                                    .justify_center()
+                                    .items_center()
+                                    .text_base()
+                                    .font_weight(gpui::FontWeight(600.))
+                                    .bg(col(ACCENT_FOCUS))
+                                    .text_color(col(BG))
+                                    .active(|s| s.opacity(0.85))
+                                    .border_1()
+                                    .border_color(col(ACCENT_FOCUS))
+                                    .rounded_full()
+                                    .cursor_pointer()
+                                    .child(button_label)
+                                    .on_click(cx.listener(Self::toggle_timer)),
+                            )
+                            .child(
+                                div()
+                                    .id("btn_settings")
+                                    .relative()
+                                    .h(px(40.))
+                                    .w(px(40.))
+                                    .flex()
+                                    .justify_center()
+                                    .items_center()
+                                    .rounded_full()
+                                    .bg(col(SURFACE))
+                                    .border_1()
+                                    .border_color(col(BORDER))
+                                    .text_color(col(TEXT_SECONDARY))
+                                    .cursor_pointer()
+                                    .active(|s| s.bg(col(SURFACE_ACTIVE)))
+                                    .child("⚙")
+                                    .when(has_pending, |s| {
+                                        s.child(
+                                            div()
+                                                .absolute()
+                                                .top(px(-3.))
+                                                .right(px(-3.))
+                                                .w(px(9.))
+                                                .h(px(9.))
+                                                .rounded_full()
+                                                .bg(col(RED)),
+                                        )
+                                    })
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.current_view = AppView::Settings;
+                                        cx.notify();
                                     })),
                             ),
                     ),
             )
-            // Button row: [ ↺ ]  [ Start/Pause ]  [ ⚙ ]
-            .child(
-                div()
-                    .mt(px(8.))
-                    .flex()
-                    .flex_row()
-                    .gap_2()
-                    .items_center()
-                    .w(px(300.))
-                    // Reset button
-                    .child(
-                        div()
-                            .id("btn_reset")
-                            .w(px(40.))
-                            .h(px(40.))
-                            .flex()
-                            .justify_center()
-                            .items_center()
-                            .rounded_full()
-                            .bg(col(SURFACE))
-                            .border_1()
-                            .border_color(col(BORDER))
-                            .text_color(col(TEXT_SECONDARY))
-                            .cursor_pointer()
-                            .active(|s| s.bg(col(SURFACE_ACTIVE)))
-                            .child("↺")
-                            .on_click(cx.listener(Self::reset_timer)),
-                    )
-                    // Toggle button (primary — orange fill)
-                    .child(
-                        div()
-                            .id("btn_toggle")
-                            .flex_1()
-                            .h(px(40.))
-                            .flex()
-                            .justify_center()
-                            .items_center()
-                            .text_base()
-                            .font_weight(gpui::FontWeight(600.))
-                            .bg(col(ACCENT_FOCUS))
-                            .text_color(col(BG))
-                            .active(|s| s.opacity(0.85))
-                            .border_1()
-                            .border_color(col(ACCENT_FOCUS))
-                            .rounded_full()
-                            .cursor_pointer()
-                            .child(button_label)
-                            .on_click(cx.listener(Self::toggle_timer)),
-                    )
-                    // Settings button with pending badge
-                    .child(
-                        div()
-                            .id("btn_settings")
-                            .relative()
-                            .h(px(40.))
-                            .w(px(40.))
-                            .flex()
-                            .justify_center()
-                            .items_center()
-                            .rounded_full()
-                            .bg(col(SURFACE))
-                            .border_1()
-                            .border_color(col(BORDER))
-                            .text_color(col(TEXT_SECONDARY))
-                            .cursor_pointer()
-                            .active(|s| s.bg(col(SURFACE_ACTIVE)))
-                            .child("⚙")
-                            .when(has_pending, |s| {
-                                s.child(
-                                    div()
-                                        .absolute()
-                                        .top(px(-3.))
-                                        .right(px(-3.))
-                                        .w(px(9.))
-                                        .h(px(9.))
-                                        .rounded_full()
-                                        .bg(col(RED)),
-                                )
-                            })
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.current_view = AppView::Settings;
-                                cx.notify();
-                            })),
-                    ),
-            )
+            // Shortcut hints pinned to bottom
+            .child(shortcuts_row("space  toggle   r  reset   s  settings"))
             .into_any()
     }
 
-    fn render_settings(&mut self, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn render_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        window.set_window_title("Pomo · Settings");
+
         let (focus_min, break_min, total_sess) = match &self.pending {
             Some(p) => (p.focus_minutes, p.break_minutes, p.total_sessions as u32),
             None => {
@@ -542,8 +561,7 @@ impl RootView {
                         cx.notify();
                     }
                     "k" => {
-                        this.selected_settings_row =
-                            this.selected_settings_row.saturating_sub(1);
+                        this.selected_settings_row = this.selected_settings_row.saturating_sub(1);
                         cx.notify();
                     }
                     "space" | "enter" => {
@@ -573,7 +591,6 @@ impl RootView {
             }))
             .id("settings")
             .size_full()
-            .py(px(24.))
             .flex()
             .flex_col()
             .bg(col(BG))
@@ -585,7 +602,7 @@ impl RootView {
                     .flex_row()
                     .items_center()
                     .px(px(20.))
-                    .pt(px(20.))
+                    .pt(px(24.))
                     .pb(px(12.))
                     .gap_3()
                     .child(
@@ -614,13 +631,7 @@ impl RootView {
                                 .flex_row()
                                 .items_center()
                                 .gap_1()
-                                .child(
-                                    div()
-                                        .w(px(7.))
-                                        .h(px(7.))
-                                        .rounded_full()
-                                        .bg(col(RED)),
-                                )
+                                .child(div().w(px(7.)).h(px(7.)).rounded_full().bg(col(RED)))
                                 .child(
                                     div()
                                         .text_sm()
@@ -666,18 +677,16 @@ impl RootView {
                                     .text_color(col(TEXT_SECONDARY))
                                     .child(value_str),
                             )
-                            .child(
-                                div()
-                                    .text_base()
-                                    .text_color(col(TEXT_MUTED))
-                                    .child("›"),
-                            ),
+                            .child(div().text_base().text_color(col(TEXT_MUTED)).child("›")),
                     )
             }))
+            // Spacer + hints
+            .child(div().flex_1())
+            .child(shortcuts_row("j/k  navigate   space  open   esc  back"))
             .into_any()
     }
 
-    fn render_edit(&mut self, _: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn render_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let target = match &self.current_view {
             AppView::Edit(t) => t.clone(),
             _ => return div().into_any(),
@@ -692,6 +701,8 @@ impl RootView {
         let max = target.max();
         let is_editing = self.is_editing_value;
         let input_text = self.input_text.clone();
+
+        window.set_window_title(&format!("Pomo · {}", label));
 
         div()
             .on_action(|_: &CloseWindow, window, _| window.remove_window())
@@ -748,7 +759,6 @@ impl RootView {
             }))
             .id("edit")
             .size_full()
-            .py(px(24.))
             .flex()
             .flex_col()
             .bg(col(BG))
@@ -760,7 +770,7 @@ impl RootView {
                     .flex_row()
                     .items_center()
                     .px(px(20.))
-                    .pt(px(20.))
+                    .pt(px(24.))
                     .pb(px(12.))
                     .gap_3()
                     .child(
@@ -797,7 +807,6 @@ impl RootView {
                             .flex_row()
                             .items_center()
                             .gap(px(32.))
-                            // Minus button
                             .child(
                                 div()
                                     .id("btn_minus")
@@ -823,7 +832,6 @@ impl RootView {
                                         cx.notify();
                                     })),
                             )
-                            // Value — click to type
                             .child(
                                 div()
                                     .id("value_display")
@@ -851,7 +859,6 @@ impl RootView {
                                         format!("{}", value)
                                     }),
                             )
-                            // Plus button
                             .child(
                                 div()
                                     .id("btn_plus")
@@ -878,14 +885,29 @@ impl RootView {
                                     })),
                             ),
                     )
-                    .child(
-                        div()
-                            .text_color(col(TEXT_SECONDARY))
-                            .child(unit),
-                    ),
+                    .child(div().text_color(col(TEXT_SECONDARY)).child(unit)),
             )
+            // Hints
+            .child(shortcuts_row(if is_editing {
+                "0-9  type   backspace  delete   enter  confirm   esc  cancel"
+            } else {
+                "j/k  adjust   space  confirm   esc  cancel"
+            }))
             .into_any()
     }
+}
+
+// ── Shortcut hint row ─────────────────────────────────────────────────────────
+
+fn shortcuts_row(text: &'static str) -> gpui::Div {
+    div()
+        .w_full()
+        .flex()
+        .justify_center()
+        .pb(px(14.))
+        .text_size(px(10.))
+        .text_color(col(TEXT_MUTED))
+        .child(text)
 }
 
 // ── Ring drawing ──────────────────────────────────────────────────────────────

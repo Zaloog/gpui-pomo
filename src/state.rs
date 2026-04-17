@@ -1,14 +1,10 @@
 use gpui::Global;
 
-const DEFAULT_FOCUS_MINUTES: u32 = 25;
-const DEFAULT_BREAK_MINUTES: u32 = 5;
-const DEFAULT_TOTAL_SESSIONS: u8 = 5;
-
 pub struct PomoAppState {
     pub running: bool,
     pub is_break: bool,
     pub sessions_completed: u8,
-    pub seconds_left: u64,
+    pub millis_left: u64,
     pub focus_minutes: u32,
     pub break_minutes: u32,
     pub total_sessions: u8,
@@ -22,39 +18,52 @@ impl Default for PomoAppState {
             running: false,
             is_break: false,
             sessions_completed: 0,
-            seconds_left: DEFAULT_FOCUS_MINUTES as u64 * 60,
-            focus_minutes: DEFAULT_FOCUS_MINUTES,
-            break_minutes: DEFAULT_BREAK_MINUTES,
-            total_sessions: DEFAULT_TOTAL_SESSIONS,
+            millis_left: 25 * 60_000,
+            focus_minutes: 25,
+            break_minutes: 5,
+            total_sessions: 5,
         }
     }
 }
 
 impl PomoAppState {
-    pub fn focus_seconds(&self) -> u64 {
-        self.focus_minutes as u64 * 60
+    pub fn focus_millis(&self) -> u64 {
+        self.focus_minutes as u64 * 60_000
     }
 
-    pub fn break_seconds(&self) -> u64 {
-        self.break_minutes as u64 * 60
+    pub fn break_millis(&self) -> u64 {
+        self.break_minutes as u64 * 60_000
     }
 
-    pub fn phase_seconds(&self) -> u64 {
+    pub fn phase_millis(&self) -> u64 {
         if self.is_break {
-            self.break_seconds()
+            self.break_millis()
         } else {
-            self.focus_seconds()
+            self.focus_millis()
         }
     }
 
-    pub fn is_all_done(&self) -> bool {
-        self.sessions_completed >= self.total_sessions && self.seconds_left == 0
+    pub fn seconds_display(&self) -> u64 {
+        self.millis_left / 1000
     }
 
-    pub fn tick(&mut self) {
-        if self.seconds_left > 0 {
-            self.seconds_left -= 1;
+    pub fn progress(&self) -> f32 {
+        let total = self.phase_millis();
+        if total == 0 {
+            return 1.0;
+        }
+        1.0 - self.millis_left as f32 / total as f32
+    }
+
+    pub fn is_all_done(&self) -> bool {
+        self.sessions_completed >= self.total_sessions && self.millis_left == 0
+    }
+
+    pub fn tick(&mut self, delta_ms: u64) {
+        if self.millis_left > delta_ms {
+            self.millis_left -= delta_ms;
         } else {
+            self.millis_left = 0;
             self.advance_phase();
         }
     }
@@ -62,12 +71,12 @@ impl PomoAppState {
     fn advance_phase(&mut self) {
         if self.is_break {
             self.is_break = false;
-            self.seconds_left = self.focus_seconds();
+            self.millis_left = self.focus_millis();
         } else {
             self.sessions_completed += 1;
             if self.sessions_completed < self.total_sessions {
                 self.is_break = true;
-                self.seconds_left = self.break_seconds();
+                self.millis_left = self.break_millis();
             } else {
                 self.running = false;
             }

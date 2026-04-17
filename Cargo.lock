@@ -2142,6 +2142,9 @@ name = "gpui-pomo"
 version = "0.1.0"
 dependencies = [
  "gpui-ce",
+ "serde",
+ "serde_json",
+ "xdg",
 ]
 
 [[package]]
@@ -6802,6 +6805,12 @@ name = "xcursor"
 version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bec9e4a500ca8864c5b47b8b482a73d62e4237670e5b5f1d6b9e3cae50f28f2b"
+
+[[package]]
+name = "xdg"
+version = "2.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "213b7324336b53d2414b2db8537e56544d981803139155afa84f76eeebb7a546"
 
 [[package]]
 name = "xim-ctext"
