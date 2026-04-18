@@ -59,26 +59,30 @@ impl PomoAppState {
         self.sessions_completed >= self.total_sessions && self.millis_left == 0
     }
 
-    pub fn tick(&mut self, delta_ms: u64) {
+    pub fn tick(&mut self, delta_ms: u64) -> bool {
         if self.millis_left > delta_ms {
             self.millis_left -= delta_ms;
+            false
         } else {
             self.millis_left = 0;
-            self.advance_phase();
+            self.advance_phase()
         }
     }
 
-    fn advance_phase(&mut self) {
+    fn advance_phase(&mut self) -> bool {
         if self.is_break {
             self.is_break = false;
             self.millis_left = self.focus_millis();
+            true
         } else {
             self.sessions_completed += 1;
             if self.sessions_completed < self.total_sessions {
                 self.is_break = true;
                 self.millis_left = self.break_millis();
+                true
             } else {
                 self.running = false;
+                true
             }
         }
     }

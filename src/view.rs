@@ -162,19 +162,28 @@ impl RootView {
                 last = now;
 
                 let should_continue = this.update(cx, |_, cx| {
-                    let running = {
+                    let (running, phase_switched) = {
                         let state = cx.global_mut::<PomoAppState>();
-                        if state.running {
-                            state.tick(delta_ms);
-                        }
-                        state.running
+                        let switched = if state.running {
+                            state.tick(delta_ms * 100)
+                        } else {
+                            false
+                        };
+                        (state.running, switched)
                     };
                     cx.notify();
-                    running
+                    (running, phase_switched)
                 });
 
                 match should_continue {
-                    Ok(true) => {}
+                    Ok((running, switched)) => {
+                        if switched {
+                            let _ = cx.update(|app| app.activate(true));
+                        }
+                        if !running {
+                            break;
+                        }
+                    }
                     _ => break,
                 }
             }
