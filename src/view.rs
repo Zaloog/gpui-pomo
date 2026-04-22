@@ -161,7 +161,7 @@ impl RootView {
                     let (running, phase_switched) = {
                         let state = cx.global_mut::<PomoAppState>();
                         let switched = if state.running {
-                            state.tick(delta_ms * 100)
+                            state.tick(delta_ms)
                         } else {
                             false
                         };
