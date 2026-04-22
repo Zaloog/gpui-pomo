@@ -1,5 +1,5 @@
 use std::f32::consts::PI;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use gpui::{
     AnyElement, App, ClickEvent, Context, Entity, FocusHandle, KeyDownEvent, PathBuilder,
@@ -151,15 +151,11 @@ impl RootView {
 
     fn start_timer(&self, cx: &mut Context<Self>) {
         cx.spawn(async |this, cx| {
-            let mut last = Instant::now();
             loop {
+                let delta_ms = 16;
                 cx.background_executor()
-                    .timer(Duration::from_millis(16))
+                    .timer(Duration::from_millis(delta_ms))
                     .await;
-
-                let now = Instant::now();
-                let delta_ms = now.duration_since(last).as_millis() as u64;
-                last = now;
 
                 let should_continue = this.update(cx, |_, cx| {
                     let (running, phase_switched) = {
@@ -221,7 +217,12 @@ impl RootView {
             millis_left: focus_minutes as u64 * 60_000,
             ..Default::default()
         };
-        Config { focus_minutes, break_minutes, total_sessions }.save();
+        Config {
+            focus_minutes,
+            break_minutes,
+            total_sessions,
+        }
+        .save();
         cx.notify();
     }
 
@@ -238,9 +239,11 @@ impl RootView {
         };
 
         let pristine = {
-            let s = cx.global::<PomoAppState>();
-            !s.running && s.sessions_completed == 0 && !s.is_break
-                && s.millis_left == s.focus_millis()
+            let state = cx.global::<PomoAppState>();
+            !state.running
+                && state.sessions_completed == 0
+                && !state.is_break
+                && state.millis_left == state.focus_millis()
         };
 
         if pristine {
@@ -254,14 +257,27 @@ impl RootView {
                     EditTarget::BreakMinutes => state.break_minutes = new_value,
                     EditTarget::TotalSessions => state.total_sessions = new_value as u8,
                 }
-                (state.focus_minutes, state.break_minutes, state.total_sessions)
+                (
+                    state.focus_minutes,
+                    state.break_minutes,
+                    state.total_sessions,
+                )
             };
             self.pending = None;
-            Config { focus_minutes, break_minutes, total_sessions }.save();
+            Config {
+                focus_minutes,
+                break_minutes,
+                total_sessions,
+            }
+            .save();
         } else {
             let (sf, sb, ss) = {
-                let s = cx.global::<PomoAppState>();
-                (s.focus_minutes, s.break_minutes, s.total_sessions)
+                let state = cx.global::<PomoAppState>();
+                (
+                    state.focus_minutes,
+                    state.break_minutes,
+                    state.total_sessions,
+                )
             };
             {
                 let p = self.pending.get_or_insert_with(|| PendingSettings {
@@ -302,7 +318,12 @@ impl RootView {
         }
     }
 
-    fn button_label(all_done: bool, running: bool, millis_left: u64, phase_millis: u64) -> &'static str {
+    fn button_label(
+        all_done: bool,
+        running: bool,
+        millis_left: u64,
+        phase_millis: u64,
+    ) -> &'static str {
         if all_done {
             "Restart"
         } else if running {
@@ -382,15 +403,28 @@ impl RootView {
                                 canvas(
                                     |_, _, _| {},
                                     move |bounds, _, window, _| {
-                                        let w = f32::from(bounds.size.width);
-                                        let h = f32::from(bounds.size.height);
-                                        let cx_f = f32::from(bounds.origin.x) + w / 2.0;
-                                        let cy_f = f32::from(bounds.origin.y) + h / 2.0;
-                                        let outer_r = w / 2.0 - 4.0;
-                                        let inner_r = outer_r - 18.0;
-                                        paint_ring_track(cx_f, cy_f, outer_r, inner_r, window);
+                                        let width = f32::from(bounds.size.width);
+                                        let height = f32::from(bounds.size.height);
+                                        // Calculate Center Position
+                                        let center_x = f32::from(bounds.origin.x) + width / 2.0;
+                                        let center_y = f32::from(bounds.origin.y) + height / 2.0;
+                                        let outer_radius = width / 2.0 - 4.0;
+                                        let inner_radius = outer_radius - 18.0;
+                                        paint_ring_track(
+                                            center_x,
+                                            center_y,
+                                            outer_radius,
+                                            inner_radius,
+                                            window,
+                                        );
                                         paint_ring_progress(
-                                            cx_f, cy_f, outer_r, inner_r, progress, accent, window,
+                                            center_x,
+                                            center_y,
+                                            outer_radius,
+                                            inner_radius,
+                                            progress,
+                                            accent,
+                                            window,
                                         );
                                     },
                                 )
@@ -422,35 +456,26 @@ impl RootView {
                                             .font_weight(gpui::FontWeight(900.))
                                             .text_color(accent)
                                             .text_size(px(60.))
-                                            .child(format!(
-                                                "{:02}:{:02}",
-                                                secs / 60,
-                                                secs % 60
-                                            )),
+                                            .child(format!("{:02}:{:02}", secs / 60, secs % 60)),
                                     )
                                     .child(
-                                        div()
-                                            .flex()
-                                            .flex_row()
-                                            .gap_2()
-                                            .items_center()
-                                            .children((0..total_sessions as usize).map(|i| {
+                                        div().flex().flex_row().gap_2().items_center().children(
+                                            (0..total_sessions as usize).map(|i| {
                                                 let completed = i < sessions_completed as usize;
                                                 let is_current = !all_done
                                                     && !is_break
                                                     && i == sessions_completed as usize;
-                                                div()
-                                                    .w(px(9.))
-                                                    .h(px(24.))
-                                                    .rounded_full()
-                                                    .bg(if completed {
+                                                div().w(px(9.)).h(px(24.)).rounded_full().bg(
+                                                    if completed {
                                                         col(SESSION_DONE)
                                                     } else if is_current {
                                                         col(SESSION_CURRENT)
                                                     } else {
                                                         col(SESSION_IDLE)
-                                                    })
-                                            })),
+                                                    },
+                                                )
+                                            }),
+                                        ),
                                     ),
                             ),
                     )
@@ -641,54 +666,55 @@ impl RootView {
                                 .items_center()
                                 .gap_1()
                                 .child(div().w(px(7.)).h(px(7.)).rounded_full().bg(col(RED)))
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .text_color(col(RED))
-                                        .child("pending reset"),
-                                ),
+                                .child(div().text_sm().text_color(col(RED)).child("pending reset")),
                         )
                     }),
             )
             // Setting rows
-            .children(rows.into_iter().enumerate().map(|(i, (target, label, value))| {
-                let value_str = target.value_display(value);
-                let id = SharedString::from(label);
-                let is_selected = i == selected_row;
-                div()
-                    .id(id)
-                    .flex()
-                    .flex_row()
-                    .justify_between()
-                    .items_center()
-                    .px(px(24.))
-                    .py(px(16.))
-                    .border_b_1()
-                    .border_color(col(BORDER))
-                    .cursor_pointer()
-                    .when(is_selected, |s| s.bg(col(SURFACE_ACTIVE)))
-                    .active(|s| s.bg(col(SURFACE)))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.edit_value = value;
-                        this.current_view = AppView::Edit(target.clone());
-                        cx.notify();
-                    }))
-                    .child(div().text_base().child(label))
-                    .child(
+            .children(
+                rows.into_iter()
+                    .enumerate()
+                    .map(|(i, (target, label, value))| {
+                        let value_str = target.value_display(value);
+                        let id = SharedString::from(label);
+                        let is_selected = i == selected_row;
                         div()
+                            .id(id)
                             .flex()
                             .flex_row()
-                            .gap_2()
+                            .justify_between()
                             .items_center()
+                            .px(px(24.))
+                            .py(px(16.))
+                            .border_b_1()
+                            .border_color(col(BORDER))
+                            .cursor_pointer()
+                            .when(is_selected, |s| s.bg(col(SURFACE_ACTIVE)))
+                            .active(|s| s.bg(col(SURFACE)))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.edit_value = value;
+                                this.current_view = AppView::Edit(target.clone());
+                                cx.notify();
+                            }))
+                            .child(div().text_base().child(label))
                             .child(
                                 div()
-                                    .text_base()
-                                    .text_color(col(TEXT_SECONDARY))
-                                    .child(value_str),
+                                    .flex()
+                                    .flex_row()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        div()
+                                            .text_base()
+                                            .text_color(col(TEXT_SECONDARY))
+                                            .child(value_str),
+                                    )
+                                    .child(
+                                        div().text_base().text_color(col(TEXT_MUTED)).child("›"),
+                                    ),
                             )
-                            .child(div().text_base().text_color(col(TEXT_MUTED)).child("›")),
-                    )
-            }))
+                    }),
+            )
             // Spacer + hints
             .child(div().flex_1())
             .child(shortcuts_row("j/k  navigate   space  open   esc  back"))
@@ -856,11 +882,13 @@ impl RootView {
                                         s.border_b_2().border_color(col(ACCENT_FOCUS))
                                     })
                                     .when(!is_editing, |s| {
-                                        s.cursor_pointer().on_click(cx.listener(|this, _, _, cx| {
-                                            this.input_text = this.edit_value.to_string();
-                                            this.is_editing_value = true;
-                                            cx.notify();
-                                        }))
+                                        s.cursor_pointer().on_click(cx.listener(
+                                            |this, _, _, cx| {
+                                                this.input_text = this.edit_value.to_string();
+                                                this.is_editing_value = true;
+                                                cx.notify();
+                                            },
+                                        ))
                                     })
                                     .child(if is_editing {
                                         format!("{}|", input_text)
@@ -922,10 +950,10 @@ fn shortcuts_row(text: &'static str) -> gpui::Div {
 // ── Ring drawing ──────────────────────────────────────────────────────────────
 
 fn paint_donut_arc(
-    cx_f: f32,
-    cy_f: f32,
-    outer_r: f32,
-    inner_r: f32,
+    center_x: f32,
+    center_y: f32,
+    outer_radius: f32,
+    inner_radius: f32,
     start: f32,
     end: f32,
     color: gpui::Hsla,
@@ -936,47 +964,90 @@ fn paint_donut_arc(
         return;
     }
 
-    let os = (cx_f + outer_r * start.cos(), cy_f + outer_r * start.sin());
-    let oe = (cx_f + outer_r * end.cos(), cy_f + outer_r * end.sin());
-    let ie = (cx_f + inner_r * end.cos(), cy_f + inner_r * end.sin());
-    let is_ = (cx_f + inner_r * start.cos(), cy_f + inner_r * start.sin());
+    let outer_start = (
+        center_x + outer_radius * start.cos(),
+        center_y + outer_radius * start.sin(),
+    );
+    let outer_end = (
+        center_x + outer_radius * end.cos(),
+        center_y + outer_radius * end.sin(),
+    );
+    let inner_end = (
+        center_x + inner_radius * end.cos(),
+        center_y + inner_radius * end.sin(),
+    );
+    let inner_start = (
+        center_x + inner_radius * start.cos(),
+        center_y + inner_radius * start.sin(),
+    );
 
     let large_arc = span > PI;
-    let mut b = PathBuilder::fill();
-    b.move_to(point(px(os.0), px(os.1)));
-    b.arc_to(
-        point(px(outer_r), px(outer_r)),
+    let mut builder = PathBuilder::fill();
+    // Start at outer_start
+    builder.move_to(point(px(outer_start.0), px(outer_start.1)));
+    // Move arc clockwise to outer_end
+    builder.arc_to(
+        point(px(outer_radius), px(outer_radius)),
         px(0.),
         large_arc,
         true,
-        point(px(oe.0), px(oe.1)),
+        point(px(outer_end.0), px(outer_end.1)),
     );
-    b.line_to(point(px(ie.0), px(ie.1)));
-    b.arc_to(
-        point(px(inner_r), px(inner_r)),
+    // Straight line to inner_end
+    builder.line_to(point(px(inner_end.0), px(inner_end.1)));
+    // Move arc counter_clockwise to inner_start
+    builder.arc_to(
+        point(px(inner_radius), px(inner_radius)),
         px(0.),
         large_arc,
         false,
-        point(px(is_.0), px(is_.1)),
+        point(px(inner_start.0), px(inner_start.1)),
     );
-    b.close();
+    // Close Segment
+    builder.close();
 
-    if let Ok(path) = b.build() {
+    if let Ok(path) = builder.build() {
         window.paint_path(path, color);
     }
 }
 
-fn paint_ring_track(cx_f: f32, cy_f: f32, outer_r: f32, inner_r: f32, window: &mut Window) {
+fn paint_ring_track(
+    center_x: f32,
+    center_y: f32,
+    outer_radius: f32,
+    inner_radius: f32,
+    window: &mut Window,
+) {
     let track = col(BORDER);
-    paint_donut_arc(cx_f, cy_f, outer_r, inner_r, -PI / 2., PI / 2., track, window);
-    paint_donut_arc(cx_f, cy_f, outer_r, inner_r, PI / 2., 3. * PI / 2., track, window);
+    // Paint right half
+    paint_donut_arc(
+        center_x,
+        center_y,
+        outer_radius,
+        inner_radius,
+        -PI / 2.,
+        PI / 2.,
+        track,
+        window,
+    );
+    // Paint left half
+    paint_donut_arc(
+        center_x,
+        center_y,
+        outer_radius,
+        inner_radius,
+        PI / 2.,
+        3. * PI / 2.,
+        track,
+        window,
+    );
 }
 
 fn paint_ring_progress(
-    cx_f: f32,
-    cy_f: f32,
-    outer_r: f32,
-    inner_r: f32,
+    center_x: f32,
+    center_y: f32,
+    outer_radius: f32,
+    inner_radius: f32,
     progress: f32,
     color: gpui::Hsla,
     window: &mut Window,
@@ -985,12 +1056,39 @@ fn paint_ring_progress(
         return;
     }
     if progress > 0.999 {
-        paint_donut_arc(cx_f, cy_f, outer_r, inner_r, -PI / 2., PI / 2., color, window);
-        paint_donut_arc(cx_f, cy_f, outer_r, inner_r, PI / 2., 3. * PI / 2., color, window);
+        paint_donut_arc(
+            center_x,
+            center_y,
+            outer_radius,
+            inner_radius,
+            -PI / 2.,
+            PI / 2.,
+            color,
+            window,
+        );
+        paint_donut_arc(
+            center_x,
+            center_y,
+            outer_radius,
+            inner_radius,
+            PI / 2.,
+            3. * PI / 2.,
+            color,
+            window,
+        );
         return;
     }
     let end = -PI / 2. + progress * 2. * PI;
-    paint_donut_arc(cx_f, cy_f, outer_r, inner_r, -PI / 2., end, color, window);
+    paint_donut_arc(
+        center_x,
+        center_y,
+        outer_radius,
+        inner_radius,
+        -PI / 2.,
+        end,
+        color,
+        window,
+    );
 }
 
 // ── Render dispatch ───────────────────────────────────────────────────────────

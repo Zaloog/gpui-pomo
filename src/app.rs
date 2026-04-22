@@ -1,6 +1,6 @@
 use gpui::{
-    App, Application, Bounds, KeyBinding, TitlebarOptions, Window, WindowBounds, WindowOptions,
-    px, size,
+    App, Application, Bounds, KeyBinding, TitlebarOptions, Window, WindowBounds, WindowOptions, px,
+    size,
 };
 
 use crate::config::Config;
