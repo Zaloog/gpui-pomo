@@ -1,5 +1,9 @@
 # gpui-pomo
 
+![Pomo](https://raw.githubusercontent.com/Zaloog/gpui-pomo/main/assets/app_icon.png)
+
+<a href="https://www.flaticon.com/free-icons/pomodoro-technique" title="pomodoro technique icons">Pomodoro technique icons created by Freepik - Flaticon</a>
+
 A minimal pomodoro application using [gpui]
 
 ## Timer Screen
@@ -13,3 +17,4 @@ A minimal pomodoro application using [gpui]
 
 <!-- Links -->
 [gpui]: https://www.gpui.rs/
+

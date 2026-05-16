@@ -8,6 +8,7 @@ name = "Pomo"
 identifier = "dev.gpui-pomo"
 category = "Productivity"
 short_description = "A Pomodoro timer"
+icon = ["assets/AppIcon.icns"]
 
 [dependencies]
 gpui = {package= "gpui-ce", version="*"}
