@@ -12,7 +12,7 @@ It also utilizes `objc-app-kit` to play sounds when switching between `Focus` an
 ## Timer Screen
 The `timer screen` is the main screen of the app.
 
-available shortcuts:
+Available shortcuts:
 
 | key | description |
 |- | -|
@@ -27,7 +27,7 @@ available shortcuts:
 The `settings screen` can be used to configure the app. All settings persist under `~/.config/gpui-pomo/config.json`.
 If Settings are pending there is a small red dot indicating that.
 
-available shortcuts:
+Available shortcuts:
 
 | key | description |
 |- | -|
@@ -39,16 +39,16 @@ available shortcuts:
 <p align="center"><img src="https://raw.githubusercontent.com/Zaloog/gpui-pomo/main/assets/settings.png" /></p>
 
 ## Settings Edit Screen
-The `settings edit screen` can be used to configure a specific setting.
+The `settings edit screen` can be used to configure the values for the `Focus Time`, `Break Time` and `Total Sessions`.
 
-available shortcuts:
+Available shortcuts:
 
 | key | description |
 |- | -|
 |q | quit the app |
-|s, escape | go back to [Settings Screen](#settings-screen) |
-|k, j | increase/decrease setting |
-|space, enter | go to [Settings Edit Screen](#settings-edit-screen) of the current setting|
+|escape | go back to [Settings Screen](#settings-screen) |
+|k, j | increase/decrease value |
+|space, enter | confirm new value and go back to [Settings Screen](#settings-screen) of the current setting|
 
 <p align="center"><img src="https://raw.githubusercontent.com/Zaloog/gpui-pomo/main/assets/settings_edit.png" /></p>
 
