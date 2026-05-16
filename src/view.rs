@@ -1,5 +1,7 @@
 use std::f32::consts::PI;
 use std::time::Duration;
+use objc2_app_kit::{NSSound};
+use objc2_foundation::ns_string;
 
 use gpui::{
     AnyElement, App, ClickEvent, Context, Entity, FocusHandle, KeyDownEvent, PathBuilder,
@@ -109,6 +111,14 @@ impl RootView {
         cx.new(|cx| {
             let focus_handle = cx.focus_handle();
             focus_handle.focus(window);
+
+            // Warm up the audio subsystem to avoid a cold-start delay on first phase switch.
+            for name in [ns_string!("Glass"), ns_string!("Blow")] {
+                if let Some(sound) = NSSound::soundNamed(name) {
+                    sound.setVolume(0.0);
+                    sound.play();
+                }
+            }
             Self {
                 focus_handle,
                 current_view: AppView::Timer,
@@ -161,7 +171,7 @@ impl RootView {
                     let (running, phase_switched) = {
                         let state = cx.global_mut::<PomoAppState>();
                         let switched = if state.running {
-                            state.tick(delta_ms)
+                            state.tick(delta_ms * 100)
                         } else {
                             false
                         };
@@ -174,7 +184,16 @@ impl RootView {
                 match should_continue {
                     Ok((running, switched)) => {
                         if switched {
-                            let _ = cx.update(|app| app.activate(true));
+                            let _ = cx.update(|app| {
+                                let state = app.global::<PomoAppState>();
+                                let name = if state.is_break { ns_string!("Blow") } else { ns_string!("Glass") };
+                                if let Some(sound) = NSSound::soundNamed(name) {
+                                    sound.setVolume(1.0);
+                                    sound.play();
+                                };
+                                app.activate(true)}
+                            );
+                            
                         }
                         if !running {
                             break;
