@@ -3,17 +3,17 @@
 <p align="center"><img src="https://raw.githubusercontent.com/Zaloog/gpui-pomo/main/assets/app_icon.png" /></p>
 
 
-A minimal pomodoro application using [gpui]
+A minimal pomodoro application using [gpui] for macOS
 
 > Note: This app was created with the help of AI Agents
 
 ## Features
 `gpui-pomo` comes with the following features:
 
-- configurable session length with persistant config
+- configurable session length with persistent config
 - vim-like navigation
 - jumps to foreground and gets focused when switching between `Focus` and `Break`
-- utilizes [objc2-app-kit] to play sounds (`Blow.aiff` for `Breaks` and `Glass.aiff` for `Focus` sessions) from `/System/Library/Sounds/` when switching between `Focus` and `Break` sessions.
+- utilizes `NSSound` from [objc2-app-kit] to play sounds (`Blow.aiff` for `Breaks` and `Glass.aiff` for `Focus` sessions) from `/System/Library/Sounds/` when switching between `Focus` and `Break` sessions.
 
 ## Timer Screen
 The `timer screen` is the main screen of the app.
