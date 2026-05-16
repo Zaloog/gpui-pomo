@@ -1,20 +1,20 @@
 # gpui-pomo
 
-![Pomo](https://raw.githubusercontent.com/Zaloog/gpui-pomo/main/assets/app_icon.png)
+<p align="center"><img src="https://raw.githubusercontent.com/Zaloog/gpui-pomo/main/assets/app_icon.png" /></p>
 
-<a href="https://www.flaticon.com/free-icons/pomodoro-technique" title="pomodoro technique icons">Pomodoro technique icons created by Freepik - Flaticon</a>
 
 A minimal pomodoro application using [gpui]
 
 ## Timer Screen
-![Timer](https://raw.githubusercontent.com/Zaloog/gpui-pomo/main/assets/timer.png)
+<p align="center"><img src="https://raw.githubusercontent.com/Zaloog/gpui-pomo/main/assets/timer.png" /></p>
 
 ## Settings Screen
-![Settings](https://raw.githubusercontent.com/Zaloog/gpui-pomo/main/assets/settings.png)
+<p align="center"><img src="https://raw.githubusercontent.com/Zaloog/gpui-pomo/main/assets/settings.png" /></p>
 
 ## Settings Edit Screen
-![Edit](https://raw.githubusercontent.com/Zaloog/gpui-pomo/main/assets/settings_edit.png)
+<p align="center"><img src="https://raw.githubusercontent.com/Zaloog/gpui-pomo/main/assets/settings_edit.png" /></p>
 
 <!-- Links -->
+<a href="https://www.flaticon.com/free-icons/pomodoro-technique" title="pomodoro technique icons">Icon created by Freepik - Flaticon</a>
 [gpui]: https://www.gpui.rs/
 
