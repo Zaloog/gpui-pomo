@@ -14,7 +14,8 @@ A minimal pomodoro application using [gpui]
 ## Settings Edit Screen
 <p align="center"><img src="https://raw.githubusercontent.com/Zaloog/gpui-pomo/main/assets/settings_edit.png" /></p>
 
-<!-- Links -->
 <a href="https://www.flaticon.com/free-icons/pomodoro-technique" title="pomodoro technique icons">Icon created by Freepik - Flaticon</a>
+
+<!-- Links -->
 [gpui]: https://www.gpui.rs/
 
