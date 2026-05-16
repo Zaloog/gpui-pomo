@@ -6,8 +6,12 @@
 A minimal pomodoro application using [gpui]
 
 ## Features
-`gpui-pomo` comes with several screens and vim-like keybindings.
-It also utilizes `objc-app-kit` to play sounds when switching between `Focus` and `Break` Sessions.
+`gpui-pomo` comes with the following features:
+
+- configurable session length with persistant config
+- vim-like navigation
+- jumps to foreground and gets focused when switching between `Focus` and `Break`
+- utilizes [objc2-app-kit] to play sounds (`Blow.aiff` for `Breaks` and `Glass.aiff` for `Focus` sessions) from `/System/Library/Sounds/` when switching between `Focus` and `Break` sessions.
 
 ## Timer Screen
 The `timer screen` is the main screen of the app.
@@ -48,7 +52,7 @@ Available shortcuts:
 |q | quit the app |
 |escape | go back to [Settings Screen](#settings-screen) |
 |k, j | increase/decrease value |
-|space, enter | confirm new value and go back to [Settings Screen](#settings-screen) of the current setting|
+|space, enter | confirm new value and go back to [Settings Screen](#settings-screen)|
 
 <p align="center"><img src="https://raw.githubusercontent.com/Zaloog/gpui-pomo/main/assets/settings_edit.png" /></p>
 
@@ -74,4 +78,4 @@ cargo bundle --release
 <!-- Links -->
 [gpui]: https://www.gpui.rs/
 [cargo-bundler]: https://github.com/burtonageo/cargo-bundle
-
+[objc2-app-kit]: https://github.com/madsmtm/objc2
