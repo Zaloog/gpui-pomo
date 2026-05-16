@@ -1,7 +1,7 @@
 use objc2_app_kit::NSSound;
 use objc2_foundation::ns_string;
 use std::f32::consts::PI;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use gpui::{
     AnyElement, App, ClickEvent, Context, Entity, FocusHandle, KeyDownEvent, PathBuilder,
@@ -163,11 +163,15 @@ impl RootView {
 
     fn start_timer(&self, cx: &mut Context<Self>) {
         cx.spawn(async |this, cx| {
+            let mut last = Instant::now();
             loop {
-                let delta_ms = 16;
                 cx.background_executor()
-                    .timer(Duration::from_millis(delta_ms))
+                    .timer(Duration::from_millis(16))
                     .await;
+
+                let now = Instant::now();
+                let delta_ms = now.duration_since(last).as_millis() as u64;
+                last = now;
 
                 let should_continue = this.update(cx, |_, cx| {
                     let (running, phase_switched) = {
