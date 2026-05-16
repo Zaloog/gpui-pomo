@@ -1,7 +1,7 @@
+use objc2_app_kit::NSSound;
+use objc2_foundation::ns_string;
 use std::f32::consts::PI;
 use std::time::Duration;
-use objc2_app_kit::{NSSound};
-use objc2_foundation::ns_string;
 
 use gpui::{
     AnyElement, App, ClickEvent, Context, Entity, FocusHandle, KeyDownEvent, PathBuilder,
@@ -27,6 +27,8 @@ const TEXT_MUTED: u32 = 0x5a4f44;
 const SESSION_DONE: u32 = 0xf97316;
 const SESSION_CURRENT: u32 = 0xa64a1a;
 const SESSION_IDLE: u32 = 0x3d3328;
+const SOUND_BREAK: &str = "Blow";
+const SOUND_FOCUS: &str = "Glass";
 const RED: u32 = 0xef4444;
 
 fn col(hex: u32) -> gpui::Hsla {
@@ -113,7 +115,7 @@ impl RootView {
             focus_handle.focus(window);
 
             // Warm up the audio subsystem to avoid a cold-start delay on first phase switch.
-            for name in [ns_string!("Glass"), ns_string!("Blow")] {
+            for name in [ns_string!(SOUND_BREAK), ns_string!(SOUND_FOCUS)] {
                 if let Some(sound) = NSSound::soundNamed(name) {
                     sound.setVolume(0.0);
                     sound.play();
@@ -171,7 +173,7 @@ impl RootView {
                     let (running, phase_switched) = {
                         let state = cx.global_mut::<PomoAppState>();
                         let switched = if state.running {
-                            state.tick(delta_ms * 100)
+                            state.tick(delta_ms)
                         } else {
                             false
                         };
@@ -186,14 +188,17 @@ impl RootView {
                         if switched {
                             let _ = cx.update(|app| {
                                 let state = app.global::<PomoAppState>();
-                                let name = if state.is_break { ns_string!("Blow") } else { ns_string!("Glass") };
+                                let name = if state.is_break {
+                                    ns_string!(SOUND_BREAK)
+                                } else {
+                                    ns_string!(SOUND_FOCUS)
+                                };
                                 if let Some(sound) = NSSound::soundNamed(name) {
                                     sound.setVolume(1.0);
                                     sound.play();
                                 };
-                                app.activate(true)}
-                            );
-                            
+                                app.activate(true)
+                            });
                         }
                         if !running {
                             break;
