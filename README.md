@@ -17,7 +17,7 @@ available shortcuts:
 | key | description |
 |- | -|
 |q | quit the app |
-|s | go to [Settings Screen][#settings-screen] |
+|s | go to [Settings Screen](#settings-screen) |
 |r | reset timer (and apply new settings, if setting changes are pending) |
 |space | start or pause the timer |
 
@@ -32,9 +32,9 @@ available shortcuts:
 | key | description |
 |- | -|
 |q | quit the app |
-|s, escape | go back to [Timer Screen][#timer-screen] |
+|s, escape | go back to [Timer Screen](#timer-screen) |
 |k, j | move up/down |
-|space, enter | go to [Settings Edit Screen][#settings-edit-screen] of the current setting|
+|space, enter | go to [Settings Edit Screen](#settings-edit-screen) of the current setting|
 
 <p align="center"><img src="https://raw.githubusercontent.com/Zaloog/gpui-pomo/main/assets/settings.png" /></p>
 
@@ -46,9 +46,9 @@ available shortcuts:
 | key | description |
 |- | -|
 |q | quit the app |
-|s, escape | go back to [Settings Screen][#timer-screen] |
+|s, escape | go back to [Settings Screen](#settings-screen) |
 |k, j | increase/decrease setting |
-|space, enter | go to [Settings Edit Screen][#settings-edit-screen] of the current setting|
+|space, enter | go to [Settings Edit Screen](#settings-edit-screen) of the current setting|
 
 <p align="center"><img src="https://raw.githubusercontent.com/Zaloog/gpui-pomo/main/assets/settings_edit.png" /></p>
 
