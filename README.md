@@ -5,6 +5,8 @@
 
 A minimal pomodoro application using [gpui]
 
+> Note: This app was created with the help of AI Agents
+
 ## Features
 `gpui-pomo` comes with the following features:
 
