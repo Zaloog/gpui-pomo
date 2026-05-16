@@ -212,15 +212,14 @@ impl RootView {
     }
 
     fn commit_input(&mut self) {
-        if self.is_editing_value && !self.input_text.is_empty() {
-            if let Ok(v) = self.input_text.parse::<u32>() {
+        if self.is_editing_value && !self.input_text.is_empty()
+            && let Ok(v) = self.input_text.parse::<u32>() {
                 let (min, max) = match &self.current_view {
                     AppView::Edit(t) => (t.min(), t.max()),
                     _ => (1, 99),
                 };
                 self.edit_value = v.clamp(min, max);
             }
-        }
         self.is_editing_value = false;
         self.input_text = self.edit_value.to_string();
     }
@@ -304,7 +303,7 @@ impl RootView {
                 )
             };
             {
-                let p = self.pending.get_or_insert_with(|| PendingSettings {
+                let p = self.pending.get_or_insert(PendingSettings {
                     focus_minutes: sf,
                     break_minutes: sb,
                     total_sessions: ss,
@@ -315,11 +314,10 @@ impl RootView {
                     EditTarget::TotalSessions => p.total_sessions = new_value as u8,
                 }
             }
-            if let Some(ref p) = self.pending {
-                if p.focus_minutes == sf && p.break_minutes == sb && p.total_sessions == ss {
+            if let Some(ref p) = self.pending
+                && p.focus_minutes == sf && p.break_minutes == sb && p.total_sessions == ss {
                     self.pending = None;
                 }
-            }
         }
 
         self.current_view = AppView::Settings;
@@ -769,17 +767,15 @@ impl RootView {
             .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
                 if this.is_editing_value {
                     match event.keystroke.key.as_str() {
-                        k @ ("0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9") => {
-                            if this.input_text.len() < 2 {
+                        k @ ("0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9")
+                            if this.input_text.len() < 2 => {
                                 this.input_text.push_str(k);
                                 cx.notify();
                             }
-                        }
-                        "backspace" => {
-                            if this.input_text.pop().is_some() {
+                        "backspace"
+                            if this.input_text.pop().is_some() => {
                                 cx.notify();
                             }
-                        }
                         "enter" => {
                             this.commit_input();
                             cx.notify();
@@ -793,18 +789,16 @@ impl RootView {
                     }
                 } else {
                     match event.keystroke.key.as_str() {
-                        "j" => {
-                            if this.edit_value > min {
+                        "j"
+                            if this.edit_value > min => {
                                 this.edit_value -= 1;
                                 cx.notify();
                             }
-                        }
-                        "k" => {
-                            if this.edit_value < max {
+                        "k"
+                            if this.edit_value < max => {
                                 this.edit_value += 1;
                                 cx.notify();
                             }
-                        }
                         "space" | "enter" => {
                             this.commit_edit_and_go_back(cx);
                         }

@@ -34,10 +34,9 @@ impl Config {
     }
 
     pub fn save(&self) {
-        if let Some(path) = Self::path() {
-            if let Ok(json) = serde_json::to_string_pretty(self) {
+        if let Some(path) = Self::path()
+            && let Ok(json) = serde_json::to_string_pretty(self) {
                 let _ = std::fs::write(path, json);
             }
-        }
     }
 }
